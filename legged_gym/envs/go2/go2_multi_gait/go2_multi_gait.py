@@ -16,37 +16,9 @@ from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym.utils.math import wrap_to_pi, quat_apply_yaw
 from legged_gym.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from legged_gym.utils.helpers import class_to_dict
-from .go2_multi_gait_config import GO2MultiGaitCfg
 from scipy.stats import vonmises
 
 class GO2MultiGait(LeggedRobot):
-    def __init__(self, cfg: GO2MultiGaitCfg, sim_params, physics_engine, sim_device, headless):
-        """ Parses the provided config file,
-            calls create_sim() (which creates, simulation and environments),
-            initilizes pytorch buffers used during training
-
-        Args:
-            cfg (Dict): Environment config file
-            sim_params (gymapi.SimParams): simulation parameters
-            physics_engine (gymapi.SimType): gymapi.SIM_PHYSX (must be PhysX)
-            device_type (string): 'cuda' or 'cpu'
-            device_id (int): 0, 1, ...
-            headless (bool): Run without rendering if True
-        """
-        self.cfg = cfg
-        self.sim_params = sim_params
-        self.height_samples = None
-        self.debug_viz = cfg.viewer.debug_viz
-        self.init_done = False
-        self._parse_cfg(self.cfg)
-        super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
-
-        if not self.headless:
-            self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
-        self._init_buffers()
-        self._prepare_reward_function()
-        self.init_done = True
-    
     def get_observations(self):
         return self.estimator_input_buf, self.critic_obs_buf
     
@@ -413,33 +385,44 @@ class GO2MultiGait(LeggedRobot):
                                   (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,       # 12
                                    self.dof_vel * self.obs_scales.dof_vel,                               # 12
                                    self.actions,                                                         # 12
+                                   self.clock_input,                                                    # 4
+                                   self.phase_ratio,                                                    # 2
+                                   
                                    self.last_commands[:, :3] * self.commands_scale,                      # 3
                                    self.last_projected_gravity,                                          # 3
                                    self.last_base_ang_vel  * self.obs_scales.ang_vel,                    # 3
                                    (self.last_dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,  # 12
                                    self.last_dof_vel * self.obs_scales.dof_vel,                          # 12
                                    self.last_actions,                                                    # 12
+                                   self.last_clock_input,                                               # 4
+                                   self.last_phase_ratio,                                               # 2
+                                   
                                    self.llast_commands[:, :3] * self.commands_scale,                     # 3
                                    self.llast_projected_gravity,                                         # 3
                                    self.llast_base_ang_vel  * self.obs_scales.ang_vel,                   # 3
                                    (self.llast_dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos, # 12
                                    self.llast_dof_vel * self.obs_scales.dof_vel,                         # 12
                                    self.llast_actions,                                                   # 12
+                                   self.llast_clock_input,                                              # 4
+                                   self.llast_phase_ratio,                                              # 2
+                                   
                                    self.l3ast_commands[:, :3] * self.commands_scale,                     # 3
                                    self.l3ast_projected_gravity,                                         # 3
                                    self.l3ast_base_ang_vel  * self.obs_scales.ang_vel,                   # 3
                                    (self.l3ast_dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos, # 12
                                    self.l3ast_dof_vel * self.obs_scales.dof_vel,                         # 12
                                    self.l3ast_actions,                                                   # 12
+                                   self.l3ast_clock_input,                                              # 4
+                                   self.l3ast_phase_ratio,                                              # 2
+                                   
                                    self.l4ast_commands[:, :3] * self.commands_scale,                     # 3
                                    self.l4ast_projected_gravity,                                         # 3
                                    self.l4ast_base_ang_vel  * self.obs_scales.ang_vel,                   # 3
                                    (self.l4ast_dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos, # 12
                                    self.l4ast_dof_vel * self.obs_scales.dof_vel,                         # 12
                                    self.l4ast_actions,                                                   # 12
-                                   self.clock_input,                                                     # 4
-                                   self.phase_ratio,                                                     # 2
-                                   self.p_b2f,                                                           # 12
+                                   self.l4ast_clock_input,                                              # 4
+                                   self.l4ast_phase_ratio,                                              # 2
                                     ),dim=-1)
         self.estimator_true_value = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,              # 3
                                                self.foot_pos[:, :, 2],                                   # 4
@@ -447,6 +430,7 @@ class GO2MultiGait(LeggedRobot):
                                               ), dim=-1)
         if self.num_privileged_obs is not None: # critic_obs, no noise
             self.privileged_obs_buf = torch.cat((self.estimator_input_buf, self.estimator_true_value), dim=-1)
+        
         # add perceptive inputs if not blind
         # if self.cfg.terrain.measure_heights:
         #     # 121列
@@ -475,31 +459,21 @@ class GO2MultiGait(LeggedRobot):
         if self.cfg.env.include_history_obs:
             for i in range(self.cfg.env.num_history_timesteps+1):
                 noise_vec[i*self.num_history_obs_single_step:i*self.num_history_obs_single_step+3] = 0. # commands
-                noise_vec[i*self.num_history_obs_single_step+3:i*self.num_history_obs_single_step+6] = noise_scales.rpy * noise_level
+                noise_vec[i*self.num_history_obs_single_step+3:i*self.num_history_obs_single_step+6] = noise_scales.gravity * noise_level
                 noise_vec[i*self.num_history_obs_single_step+6:i*self.num_history_obs_single_step+9] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
                 noise_vec[i*self.num_history_obs_single_step+9:i*self.num_history_obs_single_step+9+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos # dof_pos
                 noise_vec[i*self.num_history_obs_single_step+9+self.num_actions:i*self.num_history_obs_single_step+9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel # dof_vel
-                noise_vec[i*self.num_history_obs_single_step+9+2*self.num_actions:i*self.num_history_obs_single_step+9+3*self.num_actions] = 0. # actions
-            noise_vec[self.num_history_timesteps*self.num_history_obs_single_step+9+3*self.num_actions:self.num_history_timesteps*self.num_history_obs_single_step+9+3*self.num_actions+3*len(self.feet_names)] = noise_scales.dof_pos * noise_level
-            noise_vec[237:241] = 0. # clock_input
-            noise_vec[241:243] = 0. # phase_ratio
+                noise_vec[i*self.num_history_obs_single_step+9+2*self.num_actions : i*self.num_history_obs_single_step+9+3*self.num_actions] = 0. # actions
+                noise_vec[i*self.num_history_obs_single_step+9+3*self.num_actions : i*self.num_history_obs_single_step+13+3*self.num_actions] = 0. # clock_input
+                noise_vec[i*self.num_history_obs_single_step+13+3*self.num_actions : i*self.num_history_obs_single_step+15+3*self.num_actions] = 0. # phase_ratio
         else:
             noise_vec[:3] = 0. # commands
-            noise_vec[3:6] = noise_scales.rpy * noise_level
+            noise_vec[3:6] = noise_scales.gravity * noise_level
             noise_vec[6:9] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
             noise_vec[9:9+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos # q_t
             noise_vec[9+self.num_actions:9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel # qdot_t
-            noise_vec[9+2*self.num_actions:9+3*self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos # q_t-dt
-            noise_vec[9+3*self.num_actions:9+4*self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos # q_t-2dt
-            noise_vec[9+4*self.num_actions:9+5*self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos # q_t-3dt
-            noise_vec[9+5*self.num_actions:9+6*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel # qdot_t-dt
-            noise_vec[9+6*self.num_actions:9+7*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel # qdot_t-2dt
-            noise_vec[9+7*self.num_actions:9+8*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel # qdot_t-3dt
-            noise_vec[9+8*self.num_actions:9+9*self.num_actions] = 0. # a_t-1
-            noise_vec[9+9*self.num_actions:9+10*self.num_actions] = 0. # a_t-2
-            noise_vec[9+10*self.num_actions:9+10*self.num_actions+3*len(self.feet_names)] = noise_scales.dof_pos * noise_level
-            noise_vec[141:145] = 0. # clock_input
-            noise_vec[145:147] = 0. # phase_ratio
+            noise_vec[9+2*self.num_actions:9+3*self.num_actions] = 0. # a_t-1
+        
         # if self.cfg.terrain.measure_heights:
         #     noise_vec[48:235] = noise_scales.height_measurements* noise_level * self.obs_scales.height_measurements
             
@@ -624,7 +598,6 @@ class GO2MultiGait(LeggedRobot):
         self.a_stance = self.b_swing
         self.omega_walking[:, :] = 1/(1+torch.exp(-200*(self.phase_ratio[:, 0].unsqueeze(1) - 0.15)))  # use swing phase ratio to indicate gait
         self.last_clock_input = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
-
         self.llast_clock_input = torch.zeros_like(self.last_clock_input)
         self.l3ast_clock_input = torch.zeros_like(self.last_clock_input)
         self.l4ast_clock_input = torch.zeros_like(self.last_clock_input)
@@ -888,7 +861,7 @@ class GO2MultiGait(LeggedRobot):
     def resample_phase_and_theta(self, env_ids):
         if self.selected_gait is not None:
             gait = self.selected_gait
-            if gait == "bound":
+            if gait == "trot":
                 self.gait_period[env_ids] = self.cfg.rewards.periodic_reward_framework.gait_period[0]
                 self.theta[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[0]
                 self.theta[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[0]
@@ -898,7 +871,7 @@ class GO2MultiGait(LeggedRobot):
                 self.a_stance = self.b_swing
                 self.phase_ratio[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[0]
                 self.phase_ratio[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[0]
-            elif gait == "trot":
+            elif gait == "fly_trot":
                 self.gait_period[env_ids] = self.cfg.rewards.periodic_reward_framework.gait_period[1]
                 self.theta[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[1]
                 self.theta[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[1]
@@ -908,30 +881,31 @@ class GO2MultiGait(LeggedRobot):
                 self.a_stance = self.b_swing
                 self.phase_ratio[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[1]
                 self.phase_ratio[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[1]
-            elif gait == "walk":
-                self.gait_period[env_ids] = self.cfg.rewards.periodic_reward_framework.gait_period[2]
-                self.theta[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[2]
-                self.theta[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[2]
-                self.theta[env_ids, 2] = self.cfg.rewards.periodic_reward_framework.theta_rl[2]
-                self.theta[env_ids, 3] = self.cfg.rewards.periodic_reward_framework.theta_rr[2]
-                self.b_swing[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.b_swing[2] *2*torch.pi
-                self.a_stance = self.b_swing
-                self.phase_ratio[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[2]
-                self.phase_ratio[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[2]
         else:
-            gait_list = list(range(self.cfg.rewards.periodic_reward_framework.num_gaits))
-            gait_choice = np.random.choice(gait_list)
-            self.gait_period[env_ids] = self.cfg.rewards.periodic_reward_framework.gait_period[gait_choice]
+            vel_over_threshold = torch.norm(self.commands[env_ids, :2], dim=-1) > 0.7
+            over_threshold_idx = vel_over_threshold.nonzero(as_tuple=False).flatten()
+            self.gait_period[env_ids] = self.cfg.rewards.periodic_reward_framework.gait_period[0]
             # update theta
-            self.theta[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[gait_choice]
-            self.theta[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[gait_choice]
-            self.theta[env_ids, 2] = self.cfg.rewards.periodic_reward_framework.theta_rl[gait_choice]
-            self.theta[env_ids, 3] = self.cfg.rewards.periodic_reward_framework.theta_rr[gait_choice]
+            self.theta[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[0]
+            self.theta[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[0]
+            self.theta[env_ids, 2] = self.cfg.rewards.periodic_reward_framework.theta_rl[0]
+            self.theta[env_ids, 3] = self.cfg.rewards.periodic_reward_framework.theta_rr[0]
             # update b_swing, phase ratio
-            self.b_swing[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.b_swing[gait_choice] *2*torch.pi
+            self.b_swing[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.b_swing[0] *2*torch.pi
             self.a_stance = self.b_swing
-            self.phase_ratio[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[gait_choice]
-            self.phase_ratio[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[gait_choice]
+            self.phase_ratio[env_ids, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[0]
+            self.phase_ratio[env_ids, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[0]
+            # override for the envs with high velocity
+            if len(over_threshold_idx) > 0:
+                self.gait_period[over_threshold_idx] = self.cfg.rewards.periodic_reward_framework.gait_period[1]
+                self.theta[over_threshold_idx, 0] = self.cfg.rewards.periodic_reward_framework.theta_fl[1]
+                self.theta[over_threshold_idx, 1] = self.cfg.rewards.periodic_reward_framework.theta_fr[1]
+                self.theta[over_threshold_idx, 2] = self.cfg.rewards.periodic_reward_framework.theta_rl[1]
+                self.theta[over_threshold_idx, 3] = self.cfg.rewards.periodic_reward_framework.theta_rr[1]
+                self.b_swing[over_threshold_idx, 0] = self.cfg.rewards.periodic_reward_framework.b_swing[1] *2*torch.pi
+                self.a_stance = self.b_swing
+                self.phase_ratio[over_threshold_idx, 0] = self.cfg.rewards.periodic_reward_framework.swing_phase_ratio[1]
+                self.phase_ratio[over_threshold_idx, 1] = self.cfg.rewards.periodic_reward_framework.stance_phase_ratio[1]
         # # update state indicator
         self.omega_walking[env_ids, :] = 1/(1+torch.exp(-200*(self.phase_ratio[env_ids, 0].unsqueeze(1) - 0.15)))
     
@@ -1057,12 +1031,8 @@ class GO2MultiGait(LeggedRobot):
         action_smoothness_cost = torch.sum(torch.square(self.actions - 2*self.last_actions + self.llast_actions), dim=-1)
         return action_smoothness_cost
     
-    def _reward_dof_close_to_default(self):
-        '''Penalize hip joints that are far from the default position'''
-        weight = torch.tensor([1, 0.5, 0.5, 1, 0.5, 0.5, 1, 0.5, 0.5, 1, 0.5, 0.5], device=self.device)
-        return torch.sum(weight * torch.square(self.dof_pos - self.default_dof_pos), dim=-1)
-    
     def _reward_foot_clearance(self):
         '''reward for foot clearance'''
         foot_vel_xy_norm = torch.norm(self.foot_vel[:, :, [0, 1]], dim=-1)
-        return torch.sum(foot_vel_xy_norm * torch.square(self.foot_pos[:, :, 2] - self.cfg.rewards.foot_clearance_target), dim=-1)
+        reward = torch.sum(foot_vel_xy_norm * torch.square(self.foot_pos[:, :, 2] - self.cfg.rewards.foot_clearance_target), dim=-1)
+        return torch.exp(-reward/self.cfg.rewards.foot_clearance_tracking_sigma) # positive formulation can learn better

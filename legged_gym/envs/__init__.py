@@ -36,6 +36,8 @@ from .go2.go2_config import GO2Cfg, GO2CfgPPO
 from .go2.go2 import GO2
 from .go2.go2_ee.go2_ee_config import GO2EECfg, GO2EECfgPPO
 from .go2.go2_ee.go2_ee import GO2EE
+from .go2.go2_multi_gait.go2_multi_gait_config import GO2MultiGaitCfg, GO2MultiGaitCfgPPO
+from .go2.go2_multi_gait.go2_multi_gait import GO2MultiGait
 
 import os
 
@@ -44,3 +46,4 @@ from legged_gym.utils.task_registry import task_registry
 task_registry.register( "a1", LeggedRobot, A1RoughCfg(), A1RoughCfgPPO() )
 task_registry.register( "go2", GO2, GO2Cfg(), GO2CfgPPO() )
 task_registry.register( "go2_ee", GO2EE, GO2EECfg(), GO2EECfgPPO() )
+task_registry.register( "go2_multi_gait", GO2MultiGait, GO2MultiGaitCfg(), GO2MultiGaitCfgPPO() )

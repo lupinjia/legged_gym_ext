@@ -86,17 +86,17 @@ class Logger:
         # a.set(xlabel='time [s]', ylabel='GRF [N]', title='quad GRF')
         # a.legend()
 
-        # # plot E[C_frc] in row 1
-        # a = axs[1, 0]
-        # if log["E[C_frc_left]"]: a.plot(time, log["E[C_frc_left]"], label='left')
-        # if log["E[C_frc_fl]"]: a.plot(time, log["E[C_frc_fl]"], label='fl')
-        # a.set(xlabel='time [s]', ylabel='E[C]', title='quad E[C]')
-        # a.legend()
-        # a = axs[1, 1]
-        # if log["E[C_frc_right]"]: a.plot(time, log["E[C_frc_right]"], label='right')
-        # if log["E[C_frc_fr]"]: a.plot(time, log["E[C_frc_fr]"], label='fr')
-        # a.set(xlabel='time [s]', ylabel='E[C]', title='quad E[C]')
-        # a.legend()
+        # plot E[C_frc] in row 1
+        a = axs[1, 0]
+        if log["E[C_frc_left]"]: a.plot(time, log["E[C_frc_left]"], label='left')
+        if log["E[C_frc_fl]"]: a.plot(time, log["E[C_frc_fl]"], label='fl')
+        a.set(xlabel='time [s]', ylabel='E[C]', title='quad E[C]')
+        a.legend()
+        a = axs[1, 1]
+        if log["E[C_frc_right]"]: a.plot(time, log["E[C_frc_right]"], label='right')
+        if log["E[C_frc_fr]"]: a.plot(time, log["E[C_frc_fr]"], label='fr')
+        a.set(xlabel='time [s]', ylabel='E[C]', title='quad E[C]')
+        a.legend()
         # a = axs[1, 2]
         # if log["E[C_frc_rl]"]: a.plot(time, log["E[C_frc_rl]"], label='rl')
         # a.set(xlabel='time [s]', ylabel='E[C]', title='quad E[C]')
