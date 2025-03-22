@@ -14,7 +14,7 @@ This repository is an extension of original [legged_gym](https://github.com/legg
 1. Create a new python virtual env with python 3.6, 3.7 or 3.8 (3.8 recommended)
 2. Install [pytorch with cuda](https://pytorch.org/get-started/locally/)
 3. Install Isaac Gym
-   - Download and install Isaac Gym Preview 3 (Preview 2 will not work!) from https://developer.nvidia.com/isaac-gym
+   - Download and install Isaac Gym from https://developer.nvidia.com/isaac-gym
 4. Install rsl_rl_ext
    - Clone https://github.com/lupinjia/rsl_rl_ext
    -  `cd rsl_rl_ext && pip install -e .` 
