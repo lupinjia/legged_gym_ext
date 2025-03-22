@@ -319,9 +319,8 @@ class GO2EE(LeggedRobot):
                                   self.l3ast_dof_vel * self.obs_scales.dof_vel,                          # 12
                                   self.actions,                                                         # 12
                                   self.last_actions,
-                                   self.p_b2f,                                # 12
-                                   self.clock_input,                                                     # 4
-                                   self.phase_ratio,                                                     # 2
+                                  self.clock_input,                                                     # 4
+                                  self.phase_ratio,                                                     # 2
                                     ),dim=-1)
         # if torch.isnan(self.estimator_input_buf).any():
         #     print("nan in estimator_input_buf")
@@ -858,4 +857,4 @@ class GO2EE(LeggedRobot):
         '''reward for foot clearance'''
         foot_vel_xy_norm = torch.norm(self.foot_vel[:, :, [0, 1]], dim=-1)
         reward = torch.sum(foot_vel_xy_norm * torch.square(self.foot_pos[:, :, 2] - self.cfg.rewards.foot_clearance_target), dim=-1)
-        return torch.exp(-reward/self.cfg.rewards.foot_clearance_tracking_sigma)
+        return torch.exp(-reward/self.cfg.rewards.foot_clearance_tracking_sigma) # positive formulation can learn better

@@ -5,7 +5,7 @@ class GO2EECfg( LeggedRobotCfg ):
     seed = 0
     class env( LeggedRobotCfg.env ):
         num_envs = 8192
-        num_estimator_input = 147 # add clock_input and phase_ratio
+        num_estimator_input = 135 # add clock_input and phase_ratio
         num_estimator_output = 11
         num_actor_obs = num_estimator_input + num_estimator_output
         num_critic_obs = num_actor_obs
@@ -79,7 +79,7 @@ class GO2EECfg( LeggedRobotCfg ):
         base_height_target = 0.36
         tracking_sigma = 0.25
         foot_clearance_target = 0.12
-        foot_clearance_tracking_sigma = 0.005
+        foot_clearance_tracking_sigma = 0.01
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
             # limitation
@@ -100,7 +100,7 @@ class GO2EECfg( LeggedRobotCfg ):
             torques = -2.e-4
             # gait
             periodic_reward = 1.0
-            foot_clearance = 1.0
+            foot_clearance = 0.5
         
         class periodic_reward_framework:
             '''Periodic reward framework in OSU's paper(https://arxiv.org/abs/2011.01387)'''
@@ -209,8 +209,8 @@ class GO2EECfgPPO( LeggedRobotCfgPPO ):
         num_steps_per_env = 24 # per iteration
         save_interval = 100 # check for potential saves every this many iterations
         experiment_name = 'go2_ee'
-        load_run = "Mar21_16-23-12_" # -1 = last run
-        checkpoint = 1000 # -1 = last saved model
+        load_run = "Mar21_22-36-17_" # -1 = last run
+        checkpoint = 2500 # -1 = last saved model
         max_iterations = 2500 # number of policy updates
     
     class estimator():
